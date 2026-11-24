@@ -2,6 +2,12 @@
 #include <OpenGL/glu.h>
 #include <GLUT/glut.h>
 #include <math.h>
+#include <cstdlib>
+#include <cerrno>
+#include <unistd.h>
+#include <signal.h>
+#include <sys/types.h>
+#include <sys/wait.h>
 
 
 #define PI 3.1416
@@ -5342,14 +5348,47 @@ void scene5_display()
 }
 
 
+// macOS sound playback using the built-in afplay command.
+static pid_t metroSoundProcess = -1;
+
 void sound()
 {
-    PlaySound("a.wav", NULL, SND_ASYNC | SND_FILENAME);
+    // Stop any previous playback before starting a new one.
+    stopSound();
+
+    pid_t pid = fork();
+
+    if (pid == 0)
+    {
+        // The audio file must be in the program's current working directory.
+        execlp("afplay", "afplay", "a.wav", (char *)NULL);
+        _exit(127); // afplay could not be started
+    }
+    else if (pid > 0)
+    {
+        metroSoundProcess = pid;
+    }
 }
 
 void stopSound()
 {
-    PlaySound(NULL, NULL, 0);
+    if (metroSoundProcess > 0)
+    {
+        int status = 0;
+        pid_t result = waitpid(metroSoundProcess, &status, WNOHANG);
+
+        if (result == 0)
+        {
+            kill(metroSoundProcess, SIGTERM);
+
+            // Reap the child process after stopping playback.
+            while (waitpid(metroSoundProcess, &status, 0) == -1 && errno == EINTR)
+            {
+            }
+        }
+
+        metroSoundProcess = -1;
+    }
 }
 
 void updateMetroSound(int visible)
